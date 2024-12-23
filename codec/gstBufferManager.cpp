@@ -63,6 +63,9 @@ gstBufferManager::gstBufferManager( videoOptions* options )
 gstBufferManager::~gstBufferManager()
 {
 	NvBufSurfaceUnMap(mSurfConv, -1, -1);
+#ifdef ENABLE_NVMM
+    CUDA_FREE(mNvmmCUDA);
+#endif
 }
 
 
@@ -152,7 +155,7 @@ bool gstBufferManager::Enqueue( GstBuffer* gstBuffer, GstCaps* gstCaps )
 		LogVerbose(LOG_GSTREAMER "gstBufferManager -- recieved first frame, codec=%s format=%s width=%u height=%u size=%zu\n", videoOptions::CodecToStr(mOptions->codec), imageFormatToStr(mFormatYUV), mOptions->width, mOptions->height, gstSize);
 	}
 
-	//LogDebug(LOG_GSTREAMER "gstBufferManager -- recieved %ix%i frame (%zu bytes)\n", width, height, gstSize);
+	//LogDebug(LOG_GSTREAMER "gustBufferManager -- recieved %ix%i frame (%zu bytes)\n", width, height, gstSize);
 		
 #ifdef ENABLE_NVMM
 	// check for NVMM buffer	
@@ -408,6 +411,7 @@ int gstBufferManager::Dequeue( void** output, imageFormat format, uint64_t timeo
 			
 			if( CUDA_FAILED(cudaMalloc(&mNvmmCUDA, sizeYUV)) )
 				return -1;
+		    mNvmmSize = sizeYUV;
 		}
 		
 		// copy arrays into linear memory (so our CUDA kernels can use it)
@@ -415,7 +419,7 @@ int gstBufferManager::Dequeue( void** output, imageFormat format, uint64_t timeo
 		
 		for( uint32_t n=0; n < eglFrame.planeCount && n < maxPlanes; n++ )
 		{
-			if( CUDA_FAILED(cudaMemcpy2DFromArrayAsync(((uint8_t*)mNvmmCUDA) + planeOffset, planePitch[n], eglFrame.frame.pArray[n], 0, 0, planePitch[n], eglFrame.planeDesc[n].height, cudaMemcpyDeviceToDevice)) )
+			if( CUDA_FAILED(cudaMemcpy2DFromArrayAsync(((uint8_t*)mNvmmCUDA) + planeOffset, planePitch[n], eglFrame.frame.pArray[n], 0, 0, planePitch[n], eglFrame.planeDesc[n].height, cudaMemcpyDeviceToDevice, stream)) )
 				return -1;
 		
 			planeOffset += planeSize[n];
